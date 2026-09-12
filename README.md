@@ -2,7 +2,7 @@
 
 Excel VBAからGLB形式の3Dチャートらしきものをつくるやつです
 
-![pic1](pic/screen1.png)
+![pic1](pic/screen2.gif)
 
 ## Overview / 概要
 
