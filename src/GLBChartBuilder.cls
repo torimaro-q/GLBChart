@@ -274,7 +274,7 @@ Private Function AddPositionAccessor(ByRef b As GLTFBuilder, ByVal bufferView As
     AddPositionAccessor = AddAccessor(b, bufferView, 5126, count, "VEC3")
 End Function
 Private Function AddIndexAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long) As Long
-    AddIndexAccessor = AddAccessor(b, bufferView, 5123, count, "SCALAR")
+    AddIndexAccessor = AddAccessor(b, bufferView, 5125, count, "SCALAR")
 End Function
 Private Function CreateBox(ByVal cx As Single, ByVal cy As Single, ByVal cz As Single, ByVal sx As Single, ByVal sy As Single, ByVal sz As Single) As Geometry
     Dim g As Geometry
@@ -430,7 +430,9 @@ Private Function CreatePointGeometry(ByRef points() As Vector3) As Geometry
     n = GetVector3Count(points)
     If n <= 0 Then Err.Raise vbObjectError + 1000, "CreatePointGeometry", "Vector3 is empty"
     ' Normalize
-    nv = Vector3(1! / (0.000001! + AX.x.max - AX.x.min), 1! / (0.000001! + AX.y.max - AX.y.min), 1! / (0.000001! + AX.z.max - AX.z.min))
+    With AX
+        nv = Vector3(1! / (0.000001! + .x.max - .x.min), 1! / (0.000001! + .y.max - .y.min), 1! / (0.000001! + .z.max - .z.min))
+    End With
     ' Allocate
     Dim g As Geometry
     ReDim g.Vertices(0 To n * 8 - 1)
@@ -625,13 +627,14 @@ Private Function SerializeGLB(ByVal json As String, ByRef binary() As Byte) As B
 End Function
 Private Function GeometryVerticesBytes(ByRef g As Geometry) As Byte()
     With g
+        Dim data() As Byte
         Dim count As Long: count = GetVector3Count(.Vertices)
-        Dim data() As Byte: ReDim data(0 To count * 12 - 1)
-        Dim i As Long, p As Long: p = 0
         If count <= 0 Then
             GeometryVerticesBytes = data
             Exit Function
         End If
+        ReDim data(0 To count * 12 - 1)
+        Dim i As Long, p As Long: p = 0
         For i = LBound(.Vertices) To UBound(.Vertices)
             With .Vertices(i)
                 PutF32 data, p, .x: p = p + 4
@@ -645,11 +648,11 @@ End Function
 Private Function GeometryIndexBytes(ByRef g As Geometry, Optional ByVal baseIndex As Long = 0) As Byte()
     With g
         Dim count As Long: count = UBound(.Indices) - LBound(.Indices) + 1
-        Dim data() As Byte: ReDim data(0 To count * 2 - 1)
+        Dim data() As Byte: ReDim data(0 To count * 4 - 1)
         Dim i As Long, p As Long: p = 0
         For i = LBound(.Indices) To UBound(.Indices)
-            PutU16 data, p, .Indices(i) + baseIndex
-            p = p + 2
+            PutU32 data, p, .Indices(i) + baseIndex
+            p = p + 4
         Next i
     End With
     GeometryIndexBytes = data
@@ -725,7 +728,7 @@ End Function
 Private Function getNormalizedVector(ByRef vec As Vector3) As Vector3
     Dim l As Single
     With vec
-        l = Sqr(.x ^ 2 + .y ^ 2 + .z ^ 2)
-        If l <= 0 Then getNormalizedVector = Vector3(0, 0, 0) Else getNormalizedVector = Vector3(.x / l, .y / l, .z / l)
+        l = 1 / (Sqr(.x ^ 2 + .y ^ 2 + .z ^ 2) + 0.000001!)
+        getNormalizedVector = Vector3(.x * l, .y * l, .z * l)
     End With
 End Function
