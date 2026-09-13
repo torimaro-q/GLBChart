@@ -142,7 +142,11 @@ JSON chunk
 BIN chunk
 ```
 
+<br>
+
 **VBAすごい**
+
+<br>
 
 ## 🧊 制限事項
 
