@@ -1,3 +1,205 @@
+# 🧊 GLBChart
+ A thing that creates something resembling a 3D chart in GLB format from Excel VBA.
+
+ ## 🧊 Overview
+ GLBChart is an Excel VBA class that converts numerical data from an Excel cell range into a 3D model in **GLB (glTF Binary)** format and inserts the generated 3D model directly into an Excel worksheet.
+
+ ## 🧊 Features
+
+ - No external 3D libraries required
+- Converts XYZ numerical data from Excel into a 3D model
+- Generates self-contained GLB files
+- Inserts generated GLB models directly into Excel
+- Customizable marker and line colors
+- Displays data points connected by thin rectangular prisms
+- Generates X, Y, and Z axes as rectangular prisms
+- Generates a transparent floor on the XY plane
+- Almost everything is a rectangular prism
+- Almost everything is VBA
+
+ ## 🧊 Requirements
+
+ An Excel environment that supports `Shapes.Add3DModel` is required.
+
+ ## 🧊 Installation
+
+ Import `GLBChartBuilder` into your VBA project and you're done.
+
+ The expected input format is shown below.
+
+ The first row encountered that contains non-numeric values is treated as the axis labels.
+
+ | Temperature | Pressure | Altitude |
+| --- | --- | --- |
+| 20 | 101 | 10 |
+| 25 | 98 | 20 |
+| 30 | 95 | 30 |
+
+ **Axis labels**
+
+ - X = Temperature
+- Y = Pressure
+- Z = Altitude
+
+ In the current implementation, these labels are used internally for the chart definition.
+
+ ## 🧊 Basic Usage
+
+```
+Public Sub sample1()
+    With New GLBChartBuilder
+        .HasLine = True
+        .HasMarker = False
+        .LineWidth = 5
+        .LineColor = RGB(50, 150, 50)
+        With .CreateFromRange(ActiveSheet.Range("B1:D5000"))
+            .Left = 30
+            .Top = 25
+            .width = 250
+            .Height = 250
+        End With
+    End With
+End Sub
+```
+
+ This generates a 3D model from the specified range.
+
+ The return value is an Excel `Shape` object.
+
+ There are also several properties for customizing the appearance.
+
+ ### 🧊 Markers
+
+```
+- HasMarker = True / False
+- MarkerSize = ~1000
+- MarkerColor = RGB(0~255, 0~255, 0~255)
+```
+
+ Data points are represented as small cubes (rectangular prisms).
+
+ ### 🧊 Lines
+
+```
+- HasLine = True / False
+- LineWidth = ~1000
+- LineColor = RGB(0~255, 0~255, 0~255)
+```
+
+ When enabled, consecutive data points are connected by rectangular prisms with a rectangular cross-section.
+
+ **Yep, they're rectangular prisms again. Rectangular prisms solve everything.**
+
+ ## 🧊 Specification
+
+ The generated model contains:
+
+```
+- Data points
+- Connecting lines
+- X axis
+- Y axis
+- Z axis
+- Semi-transparent floor
+```
+
+ The input data is normalized and transformed to fit roughly within a 1×1×1 coordinate space.
+
+ Therefore, the coordinates of the generated 3D model are **not** the original numerical values from the input data.
+
+ <br> 
+
+ **This is by design.**
+
+ <br> 
+ 
+ ## 🧊 How It Works
+
+ GLBChart does not depend on any external glTF libraries.
+
+ It builds the GLB file directly from VBA.
+
+ The basic processing flow is:
+
+```
+Excel Range
+    ↓
+Vector3 data
+    ↓
+Geometry generation
+    ↓
+Binary vertex/index buffers
+    ↓
+glTF JSON
+    ↓
+GLB serialization
+    ↓
+Temporary .glb file
+    ↓
+Excel 3D Model
+```
+
+ The implementation manually generates:
+
+```
+glTF materials
+buffer views
+accessors
+meshes
+primitives
+vertex buffers
+index buffers
+GLB header
+JSON chunk
+BIN chunk
+```
+
+ <br> 
+ 
+ **VBA is amazing.**
+
+ <br> 
+ 
+ ## 🧊 Limitations
+
+ GLBChart is intentionally kept small and simple.
+
+ Current limitations include:
+
+```
+- No lighting configuration UI
+- No textures
+- No normals
+- No animations
+- No text labels inside the 3D model
+- No automatic collision detection
+- Large datasets can result in very large GLB files
+- Markers are generated as individual geometry rather than using GPU instancing
+```
+
+ ## 🧊 License
+
+ MIT License
+
+ ## 🧊 Status
+
+ **Experimental**
+
+ GLBChart is a small experimental project for generating simple 3D visualizations directly from Excel VBA.
+
+ ## 🧊 Disclaimer
+
+ This project is provided **as-is**.
+
+ Visualize at your own risk.
+
+
+<details>
+
+<summary> 🧊 日本語 </summary>
+
+---
+
 # 🧊GLBChart
 
 Excel VBAからGLB形式の3Dチャートらしきものをつくるやつです
@@ -176,3 +378,5 @@ GLBChartは、Excel VBAから直接シンプルな3D可視化を生成するた�
 
 本プロジェクトは現状のまま提供されます。
 自己責任で可視化してください。
+
+</details>
