@@ -63,16 +63,27 @@ Private Type GLTFAccessor
     componentType As Long
     count As Long
     dataType As String
+    HasMinMax As Boolean
+    minValue As Single
+    maxValue As Single
 End Type
 Private Type GLTFPrimitive
     positionAccessor As Long
     indexAccessor As Long
+    jointAccessor As Long
+    weightAccessor As Long
     material As Long
     mode As Long
+    skinned As Boolean
 End Type
 Private Type GLTFMesh
     Primitives() As GLTFPrimitive
     PrimitiveCount As Long
+End Type
+Private Type GLTFAnimation
+    inputAccessor As Long
+    outputAccessor As Long
+    targetNode As Long
 End Type
 Private Type GLTFBuilder
     Materials() As GLTFMaterial
@@ -83,14 +94,17 @@ Private Type GLTFBuilder
     AccessorCount As Long
     Meshes() As GLTFMesh
     MeshCount As Long
+    Animation As GLTFAnimation
+    HasAnimation As Boolean
     binary() As Byte
     BinaryLength As Long
 End Type
 Private AX As MyAxis
 Private Const TEMPDIR = "genglb", TEMPFNAME = "temp.glb"
 Private Const OBJ_SCALE As Single = 0.001
+Private Const ANIM_FPS As Single = 120!
 Public TargetSheet As Worksheet
-Public HasLine As Boolean, HasMarker As Boolean
+Public HasLine As Boolean, HasMarker As Boolean, HasAnimation As Boolean
 Public LineWidth As Single, MarkerSize As Single
 Public LineColor As Long, MarkerColor As Long
 Private Sub Class_Initialize()
@@ -98,6 +112,7 @@ Private Sub Class_Initialize()
     With Me
         .HasLine = False
         .HasMarker = True
+        .HasAnimation = False
         .LineWidth = 1
         .MarkerSize = 10
         .LineColor = RGB(30, 30, 30)
@@ -110,7 +125,6 @@ Private Sub Class_Initialize()
 End Sub
 Public Function CreateFromRange(ByRef target As Range) As Shape
     Dim arr As Variant: arr = target.value
-    Dim vec() As Vector3: ReDim vec(LBound(arr) To UBound(arr)) As Vector3
     Dim i As Long, st As Long
     Set TargetSheet = target.Parent
     With AX
@@ -124,6 +138,7 @@ Public Function CreateFromRange(ByRef target As Range) As Shape
         .x.min = arr(st, 1): .y.min = arr(st, 2): .z.min = arr(st, 3)
         .x.max = arr(st, 1): .y.max = arr(st, 2): .z.max = arr(st, 3)
     End With
+    Dim vec() As Vector3: ReDim vec(st To UBound(arr)) As Vector3
     For i = st To UBound(arr)
         vec(i) = Vector3(CSng(arr(i, 1)), CSng(arr(i, 2)), CSng(arr(i, 3)))
         With vec(i)
@@ -159,18 +174,22 @@ Private Sub SaveGLB(ByRef glb() As Byte, ByVal filePath As String)
     Put #f, , glb
     Close #f
 End Sub
+
 Private Function CreateGLB(ByRef points() As Vector3) As Byte()
     Dim b As GLTFBuilder: b = NewGLTF()
-    Dim tCl As LongType
-    tCl.l = MarkerColor
-    Dim pColor As LongBytes: LSet pColor = tCl
+    Dim tCl As LongType: tCl.l = MarkerColor
+    Dim pColor As LongBytes
+    LSet pColor = tCl
     tCl.l = LineColor
-    Dim lColor As LongBytes: LSet lColor = tCl
+    Dim lColor As LongBytes
+    LSet lColor = tCl
+    Dim pMaterial As Long
     With pColor
-        Dim pMaterial As Long: pMaterial = AddMaterial(b, CSng(.B0 / 255), CSng(.b1 / 255), CSng(.b2 / 255), 1)
+        pMaterial = AddMaterial(b, CSng(.B0 / 255), CSng(.b1 / 255), CSng(.b2 / 255), 1)
     End With
+    Dim lMaterial As Long
     With lColor
-        Dim lMaterial As Long: lMaterial = AddMaterial(b, CSng(.B0 / 255), CSng(.b1 / 255), CSng(.b2 / 255), 1)
+        lMaterial = AddMaterial(b, CSng(.B0 / 255), CSng(.b1 / 255), CSng(.b2 / 255), 1)
     End With
     Dim xMaterial As Long: xMaterial = AddMaterial(b, 1, 0.1, 0.1, 1)
     Dim yMaterial As Long: yMaterial = AddMaterial(b, 0.1, 0.8, 0.2, 1)
@@ -186,6 +205,12 @@ Private Function CreateGLB(ByRef points() As Vector3) As Byte()
     AddMeshGeometry b, CreateBox(0, 0, 0.5, 0.005, 0.005, 1), zMaterial
     ' FLOOR
     AddMeshGeometry b, CreateBox(0.5, 0.5, 0.005, 1, 1, 0.01), fMaterial
+    ' ANIMATION MARKER
+    If HasAnimation Then
+        AddAnimatedMarker b, pMaterial
+        AddAnimationData b, points
+    End If
+    ' GLB
     CreateGLB = BuildGLB(b)
 End Function
 Private Function NewGLTF() As GLTFBuilder
@@ -196,6 +221,7 @@ Private Function NewGLTF() As GLTFBuilder
         .AccessorCount = 0
         .MeshCount = 0
         .BinaryLength = 0
+        .HasAnimation = False
     End With
     NewGLTF = b
 End Function
@@ -275,6 +301,33 @@ Private Function AddPositionAccessor(ByRef b As GLTFBuilder, ByVal bufferView As
 End Function
 Private Function AddIndexAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long) As Long
     AddIndexAccessor = AddAccessor(b, bufferView, 5125, count, "SCALAR")
+End Function
+Private Function AddJointAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long) As Long
+    AddJointAccessor = AddAccessor(b, bufferView, 5121, count, "VEC4")
+End Function
+Private Function AddWeightAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long) As Long
+    AddWeightAccessor = AddAccessor(b, bufferView, 5126, count, "VEC4")
+End Function
+Private Function AddAnimationInputAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long, ByVal minValue As Single, ByVal maxValue As Single) As Long
+    Dim i As Long
+    With b
+        i = .AccessorCount
+        ReDim Preserve .Accessors(0 To i)
+        With .Accessors(i)
+            .bufferView = bufferView
+            .componentType = 5126
+            .count = count
+            .dataType = "SCALAR"
+            .HasMinMax = True
+            .minValue = minValue
+            .maxValue = maxValue
+        End With
+        .AccessorCount = .AccessorCount + 1
+    End With
+    AddAnimationInputAccessor = i
+End Function
+Private Function AddAnimationOutputAccessor(ByRef b As GLTFBuilder, ByVal bufferView As Long, ByVal count As Long) As Long
+    AddAnimationOutputAccessor = AddAccessor(b, bufferView, 5126, count, "VEC3")
 End Function
 Private Function CreateBox(ByVal cx As Single, ByVal cy As Single, ByVal cz As Single, ByVal sx As Single, ByVal sy As Single, ByVal sz As Single) As Geometry
     Dim g As Geometry
@@ -452,6 +505,112 @@ Private Function CreatePointGeometry(ByRef points() As Vector3) As Geometry
     Next i
     CreatePointGeometry = g
 End Function
+Private Function CreateAnimationMarkerGeometry() As Geometry
+    CreateAnimationMarkerGeometry = CreateBox(0!, 0!, 0!, 1.5 * MarkerSize * OBJ_SCALE, 1.5 * MarkerSize * OBJ_SCALE, 1.5 * MarkerSize * OBJ_SCALE)
+End Function
+Private Function AnimationJointBytes(ByRef g As Geometry) As Byte()
+    Dim n As Long: n = GetVector3Count(g.Vertices)
+    Dim data() As Byte: ReDim data(0 To n * 4 - 1)
+    AnimationJointBytes = data
+End Function
+
+Private Function AnimationWeightBytes(ByRef g As Geometry) As Byte()
+    Dim n As Long: n = GetVector3Count(g.Vertices)
+    Dim data() As Byte
+    ReDim data(0 To n * 16 - 1)
+    Dim i As Long
+    Dim p As Long
+    For i = 0 To n - 1
+        PutF32 data, p, 1!
+        p = p + 4
+        PutF32 data, p, 0!
+        p = p + 4
+        PutF32 data, p, 0!
+        p = p + 4
+        PutF32 data, p, 0!
+        p = p + 4
+    Next i
+    AnimationWeightBytes = data
+End Function
+Private Sub AddAnimatedMarker(ByRef b As GLTFBuilder, ByVal material As Long)
+    Dim g As Geometry: g = CreateAnimationMarkerGeometry()
+    Dim positionAccessor As Long: positionAccessor = AddPositions(b, g)
+    Dim indexAccessor As Long: indexAccessor = AddIndices(b, g)
+    ' JOINTS_0
+    Dim jointData() As Byte: jointData = AnimationJointBytes(g)
+    Dim jointOffset As Long: jointOffset = AppendBinary(b, jointData)
+    Dim jointView As Long: jointView = AddBufferView(b, jointOffset, ByteArrayLength(jointData), 34962)
+    Dim jointAccessor As Long: jointAccessor = AddJointAccessor(b, jointView, GetVector3Count(g.Vertices))
+    ' WEIGHTS_0
+    Dim weightData() As Byte: weightData = AnimationWeightBytes(g)
+    Dim weightOffset As Long: weightOffset = AppendBinary(b, weightData)
+    Dim weightView As Long: weightView = AddBufferView(b, weightOffset, ByteArrayLength(weightData), 34962)
+    Dim weightAccessor As Long: weightAccessor = AddWeightAccessor(b, weightView, GetVector3Count(g.Vertices))
+    ' Mesh 1 ‚Æ‚µ‚Ä’Ç‰Á
+    Dim meshIndex As Long: meshIndex = b.MeshCount
+    ReDim Preserve b.Meshes(0 To meshIndex)
+    b.MeshCount = b.MeshCount + 1
+    With b.Meshes(meshIndex)
+        .PrimitiveCount = 1
+        ReDim .Primitives(0 To 0)
+        With .Primitives(0)
+            .positionAccessor = positionAccessor
+            .indexAccessor = indexAccessor
+            .jointAccessor = jointAccessor
+            .weightAccessor = weightAccessor
+            .material = material
+            .mode = 4
+            .skinned = True
+        End With
+    End With
+End Sub
+Private Sub AddAnimationData(ByRef b As GLTFBuilder, ByRef points() As Vector3)
+    Dim n As Long
+    n = GetVector3Count(points)
+    If n <= 0 Then Exit Sub
+    Dim inputData() As Byte: ReDim inputData(0 To n * 4 - 1)
+    Dim outputData() As Byte: ReDim outputData(0 To n * 12 - 1)
+    Dim i As Long, pIn As Long, pOut As Long
+    Dim np As Vector3
+    Dim t As Single
+    For i = 0 To n - 1
+        t = CSng(i) / ANIM_FPS
+        PutF32 inputData, pIn, t
+        pIn = pIn + 4
+        np = NormalizePoint(points(LBound(points) + i))
+        PutF32 outputData, pOut, np.x
+        pOut = pOut + 4
+        PutF32 outputData, pOut, np.y
+        pOut = pOut + 4
+        PutF32 outputData, pOut, np.z
+        pOut = pOut + 4
+    Next i
+    Dim inputOffset As Long: inputOffset = AppendBinary(b, inputData)
+    Dim inputView As Long: inputView = AddBufferView(b, inputOffset, ByteArrayLength(inputData), 0)
+    Dim duration As Single: duration = CSng(n - 1) / ANIM_FPS
+    Dim inputAccessor As Long: inputAccessor = AddAnimationInputAccessor(b, inputView, n, 0!, duration)
+    ' OUTPUT
+    Dim outputOffset As Long: outputOffset = AppendBinary(b, outputData)
+    Dim outputView As Long: outputView = AddBufferView(b, outputOffset, ByteArrayLength(outputData), 0)
+    Dim outputAccessor As Long: outputAccessor = AddAnimationOutputAccessor(b, outputView, n)
+    ' Animation
+    With b
+        .HasAnimation = True
+        .Animation.inputAccessor = inputAccessor
+        .Animation.outputAccessor = outputAccessor
+        ' Node 2 = Joint 0
+        .Animation.targetNode = 2
+    End With
+End Sub
+Private Function NormalizePoint(ByRef p As Vector3) As Vector3
+    Dim nv As Vector3
+    With AX
+        nv.x = 1! / (0.000001! + .x.max - .x.min)
+        nv.y = 1! / (0.000001! + .y.max - .y.min)
+        nv.z = 1! / (0.000001! + .z.max - .z.min)
+        NormalizePoint = Vector3((p.x - .x.min) * nv.x, (p.y - .y.min) * nv.y, (p.z - .z.min) * nv.z)
+    End With
+End Function
 Private Function CreateLineGeometry(ByRef points() As Vector3) As Geometry
     Dim n As Long: n = GetVector3Count(points)
     If n < 2 Then
@@ -486,25 +645,38 @@ Private Function BuildGLB(ByRef b As GLTFBuilder) As Byte()
     Dim json As String: json = BuildJSON(b)
     BuildGLB = SerializeGLB(json, b.binary)
 End Function
+
 Private Function BuildJSON(ByRef b As GLTFBuilder) As String
     Dim s As String, i As Long, j As Long
     ' Header
-    s = "{"
-    s = s & """asset"":{""version"":""2.0""},"
-    s = s & """scene"":0,"
+    s = "{" & _
+        """asset"":{""version"":""2.0""}," & _
+        """scene"":0,"
     ' Scenes
-    s = s & """scenes"":[{""nodes"":[0]}],"
-    ' Nodes
-    s = s & """nodes"":[{""mesh"":0}],"
+    If b.HasAnimation Then
+        s = s & """scenes"":[{""nodes"":[0,1,2]}],"
+    Else
+        s = s & """scenes"":[{""nodes"":[0]}],"
+    End If
+    If b.HasAnimation Then
+        s = s & """nodes"":[" & _
+                "{""mesh"":0}," & _
+                "{""mesh"":1,""skin"":0}," & _
+                "{}" & _
+                "],"
+    Else
+        s = s & """nodes"":[{""mesh"":0}],"
+    End If
     ' Materials
     s = s & """materials"":["
     For i = 0 To b.MaterialCount - 1
         If i > 0 Then s = s & ","
         With b.Materials(i)
-            s = s & "{"
-            s = s & """pbrMetallicRoughness"":{"
-            s = s & """baseColorFactor"":[" & FmtF32(.r) & "," & FmtF32(.g) & "," & FmtF32(.b) & "," & FmtF32(.a) & "]"
-            s = s & "}"
+            s = s & "{" & _
+                    """pbrMetallicRoughness"":{" & _
+                    """baseColorFactor"":[" & FmtF32(.r) & "," & FmtF32(.g) & "," & FmtF32(.b) & "," & FmtF32(.a) & "]" & _
+                    "}"
+                    
             If .AlphaBlend Then s = s & ",""alphaMode"":""BLEND"""
             If .DoubleSided Then s = s & ",""doubleSided"":true"
             s = s & "}"
@@ -514,57 +686,89 @@ Private Function BuildJSON(ByRef b As GLTFBuilder) As String
     ' Meshes
     s = s & """meshes"":["
     For i = 0 To b.MeshCount - 1
-        If i > 0 Then s = s & ","
-        s = s & "{""primitives"":["
-        For j = 0 To b.Meshes(i).PrimitiveCount - 1
-            If j > 0 Then s = s & ","
-            With b.Meshes(i).Primitives(j)
-                s = s & "{"
-                s = s & """attributes"":{""POSITION"":" & CStr(.positionAccessor) & "},"
-                s = s & """indices"":" & CStr(.indexAccessor) & ","
-                s = s & """material"":" & CStr(.material) & ","
-                s = s & """mode"":" & CStr(.mode)
-                s = s & "}"
-            End With
-        Next j
-        s = s & "]}"
+        With b.Meshes(i)
+            If i > 0 Then s = s & ","
+            s = s & "{""primitives"":["
+            For j = 0 To .PrimitiveCount - 1
+                If j > 0 Then s = s & ","
+                With .Primitives(j)
+                    s = s & "{" & _
+                            """attributes"":{" & _
+                            """POSITION"":" & CStr(.positionAccessor)
+                    If .skinned Then s = s & ",""JOINTS_0"":" & CStr(.jointAccessor) & ",""WEIGHTS_0"":" & CStr(.weightAccessor)
+                    s = s & "}," & _
+                            """indices"":" & CStr(.indexAccessor) & "," & _
+                            """material"":" & CStr(.material) & "," & _
+                            """mode"":" & CStr(.mode) & "}"
+                End With
+            Next j
+            s = s & "]}"
+        End With
     Next i
     s = s & "],"
+    ' Skin
+    If b.HasAnimation Then s = s & """skins"":[" & "{""joints"":[2]}" & "],"
     ' Buffers
     s = s & """buffers"":[{""byteLength"":" & CStr(Align4(b.BinaryLength)) & "}],"
     ' BufferViews
     s = s & """bufferViews"":["
+    
     For i = 0 To b.BufferViewCount - 1
         If i > 0 Then s = s & ","
         With b.BufferViews(i)
-            s = s & "{"
-            s = s & """buffer"":0,"
-            s = s & """byteOffset"":" & CStr(.byteOffset) & ","
-            s = s & """byteLength"":" & CStr(.byteLength)
+            s = s & "{" & _
+                    """buffer"":0," & _
+                    """byteOffset"":" & CStr(.byteOffset) & "," & _
+                    """byteLength"":" & CStr(.byteLength)
             If .target <> 0 Then s = s & ",""target"":" & CStr(.target)
             s = s & "}"
         End With
     Next i
+    
     s = s & "],"
     ' Accessors
     s = s & """accessors"":["
     For i = 0 To b.AccessorCount - 1
         If i > 0 Then s = s & ","
         With b.Accessors(i)
-            s = s & "{"
-            s = s & """bufferView"":" & CStr(.bufferView) & ","
-            s = s & """componentType"":" & CStr(.componentType) & ","
-            s = s & """count"":" & CStr(.count) & ","
-            s = s & """type"":""" & .dataType & """"
+            s = s & "{" & _
+                    """bufferView"":" & CStr(.bufferView) & "," & _
+                    """componentType"":" & CStr(.componentType) & "," & _
+                    """count"":" & CStr(.count) & "," & _
+                    """type"":""" & .dataType & """"
+            If .HasMinMax Then s = s & ",""min"":[" & FmtF32(.minValue) & "]" & ",""max"":[" & FmtF32(.maxValue) & "]"
             s = s & "}"
         End With
     Next i
     s = s & "]"
-    ' End
+    ' Animation
+    If b.HasAnimation Then
+        s = s & "," & _
+                """animations"":[" & _
+                "{" & _
+                """name"":""DataPointRush""," & _
+                """samplers"":[" & _
+                "{" & _
+                """input"":" & CStr(b.Animation.inputAccessor) & "," & _
+                """output"":" & CStr(b.Animation.outputAccessor) & "," & _
+                """interpolation"":""LINEAR""" & _
+                "}" & _
+                "]," & _
+                """channels"":[" & _
+                "{" & _
+                """sampler"":0," & _
+                """target"":{" & _
+                """node"":" & CStr(b.Animation.targetNode) & "," & _
+                """path"":""translation""" & _
+                "}" & _
+                "}" & _
+                "]" & _
+                "}" & _
+                "]"
+    End If
     s = s & "}"
     BuildJSON = s
 End Function
-
 Private Function SerializeGLB(ByVal json As String, ByRef binary() As Byte) As Byte()
     Dim jsonBytes() As Byte
     Dim jsonLength As Long

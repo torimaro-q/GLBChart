@@ -5,7 +5,9 @@ Public Sub sample1()
         .HasLine = True
         .HasMarker = False
         .LineWidth = 5
+        .MarkerSize = 30
         .LineColor = RGB(50, 150, 50)
+        .HasAnimation = True
         With .CreateFromRange(ActiveSheet.Range("B1:D5000"))
             .Left = 30
             .Top = 25
@@ -16,10 +18,13 @@ Public Sub sample1()
 End Sub
 Public Sub sample2()
     With New GLBChartBuilder
-        .HasLine = False
-        .HasMarker = True
-        .MarkerSize = 10
+        .HasLine = True
+        .HasMarker = False
+        .LineWidth = 5
+        .MarkerSize = 30
+        .LineColor = RGB(50, 150, 50)
         .MarkerColor = RGB(150, 50, 50)
+        .HasAnimation = True
         With .CreateFromRange(ActiveSheet.Range("F1:H5000"))
             .Left = 30
             .Top = 320
