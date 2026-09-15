@@ -2,6 +2,7 @@
  A thing that creates something resembling a 3D chart in GLB format from Excel VBA.
  
 ![pic1](pic/screen2.gif)
+![pic2](pic/screen3.gif)
 
  ## 🧊 Overview
  GLBChart is an Excel VBA class that converts numerical data from an Excel cell range into a 3D model in **GLB (glTF Binary)** format and inserts the generated 3D model directly into an Excel worksheet.
