@@ -173,7 +173,6 @@ BIN chunk
 - No lighting configuration UI
 - No textures
 - No normals
-- No animations
 - No text labels inside the 3D model
 - No automatic collision detection
 - Large datasets can result in very large GLB files
@@ -362,7 +361,6 @@ GLBChartは意図的に小さく、シンプルに作られています。
 - ライティング設定UIなし
 - テクスチャなし
 - 法線なし
-- アニメーションなし
 - 3Dモデル内への文字ラベル表示なし
 - 自動衝突判定なし
 - データ数が多いとGLBが巨大になる
